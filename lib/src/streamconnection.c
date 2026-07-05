@@ -179,14 +179,20 @@ CHIAKI_EXPORT ChiakiErrorCode chiaki_stream_connection_run(ChiakiStreamConnectio
 		goto quit_label; \
 	} } while(0)
 
-	stream_connection->audio_receiver = chiaki_audio_receiver_new(session, &stream_connection->packet_stats);
-	if(!stream_connection->audio_receiver)
+	bool audio_disabled = session->connect_info.disable_audio_video & CHIAKI_AUDIO_DISABLED;
+	bool video_disabled = session->connect_info.disable_audio_video & CHIAKI_VIDEO_DISABLED;
+
+	if(!audio_disabled)
 	{
-		CHIAKI_LOGE(session->log, "StreamConnection failed to initialize Audio Receiver");
-		if(!socket)
-			free(takion_info.sa);
-		chiaki_mutex_unlock(&stream_connection->state_mutex);
-		return CHIAKI_ERR_UNKNOWN;
+		stream_connection->audio_receiver = chiaki_audio_receiver_new(session, &stream_connection->packet_stats);
+		if(!stream_connection->audio_receiver)
+		{
+			CHIAKI_LOGE(session->log, "StreamConnection failed to initialize Audio Receiver");
+			if(!socket)
+				free(takion_info.sa);
+			chiaki_mutex_unlock(&stream_connection->state_mutex);
+			return CHIAKI_ERR_UNKNOWN;
+		}
 	}
 
 	stream_connection->haptics_receiver = chiaki_audio_receiver_new(session, NULL);
@@ -198,13 +204,16 @@ CHIAKI_EXPORT ChiakiErrorCode chiaki_stream_connection_run(ChiakiStreamConnectio
 		goto err_audio_receiver;
 	}
 
-	stream_connection->video_receiver = chiaki_video_receiver_new(session, &stream_connection->packet_stats);
-	if(!stream_connection->video_receiver)
+	if(!video_disabled)
 	{
-		CHIAKI_LOGE(session->log, "StreamConnection failed to initialize Video Receiver");
-		err = CHIAKI_ERR_UNKNOWN;
-		chiaki_mutex_unlock(&stream_connection->state_mutex);
-		goto err_haptics_receiver;
+		stream_connection->video_receiver = chiaki_video_receiver_new(session, &stream_connection->packet_stats);
+		if(!stream_connection->video_receiver)
+		{
+			CHIAKI_LOGE(session->log, "StreamConnection failed to initialize Video Receiver");
+			err = CHIAKI_ERR_UNKNOWN;
+			chiaki_mutex_unlock(&stream_connection->state_mutex);
+			goto err_haptics_receiver;
+		}
 	}
 
 	stream_connection->state = STATE_TAKION_CONNECT;
@@ -701,9 +710,13 @@ static void stream_connection_takion_data_idle(ChiakiStreamConnection *stream_co
 			 q.target_bitrate, q.upstream_bitrate,
 			 q.upstream_loss,
 			 q.disable_upstream_audio, q.rtt, q.loss);
-		stream_connection->measured_bitrate = chiaki_stream_stats_bitrate(&stream_connection->video_receiver->frame_processor.stream_stats, stream_connection->session->connect_info.video_profile.max_fps) / 1000000.0;
+		if(stream_connection->video_receiver)
+			stream_connection->measured_bitrate = chiaki_stream_stats_bitrate(&stream_connection->video_receiver->frame_processor.stream_stats, stream_connection->session->connect_info.video_profile.max_fps) / 1000000.0;
+		else
+			stream_connection->measured_bitrate = 0;
 		CHIAKI_LOGV(stream_connection->log, "StreamConnection measured bitrate: %.4f MBit/s", stream_connection->measured_bitrate);
-		chiaki_stream_stats_reset(&stream_connection->video_receiver->frame_processor.stream_stats);
+		if(stream_connection->video_receiver)
+			chiaki_stream_stats_reset(&stream_connection->video_receiver->frame_processor.stream_stats);
 		break;
 	}
 	case tkproto_TakionMessage_PayloadType_CORRUPTFRAME:
@@ -949,11 +962,13 @@ static void stream_connection_takion_data_expect_streaminfo(ChiakiStreamConnecti
 
 	ChiakiAudioHeader audio_header_s;
 	chiaki_audio_header_load(&audio_header_s, audio_header);
-	chiaki_audio_receiver_stream_info(stream_connection->audio_receiver, &audio_header_s);
+	if(stream_connection->audio_receiver)
+		chiaki_audio_receiver_stream_info(stream_connection->audio_receiver, &audio_header_s);
 
-	chiaki_video_receiver_stream_info(stream_connection->video_receiver,
-			decode_resolutions_context.video_profiles,
-			decode_resolutions_context.video_profiles_count);
+	if(stream_connection->video_receiver)
+		chiaki_video_receiver_stream_info(stream_connection->video_receiver,
+				decode_resolutions_context.video_profiles,
+				decode_resolutions_context.video_profiles_count);
 
 	// TODO: do some checks?
 
@@ -1235,10 +1250,13 @@ static void stream_connection_takion_av(ChiakiStreamConnection *stream_connectio
 	chiaki_gkcrypt_decrypt(stream_connection->gkcrypt_remote, packet->key_pos + CHIAKI_GKCRYPT_BLOCK_SIZE, packet->data, packet->data_size);
 
 	if(packet->is_video)
-		chiaki_video_receiver_av_packet(stream_connection->video_receiver, packet);
+	{
+		if(stream_connection->video_receiver)
+			chiaki_video_receiver_av_packet(stream_connection->video_receiver, packet);
+	}
 	else if(packet->is_haptics)
 	    chiaki_audio_receiver_av_packet(stream_connection->haptics_receiver, packet);
-	else
+	else if(stream_connection->audio_receiver)
 		chiaki_audio_receiver_av_packet(stream_connection->audio_receiver, packet);
 }
 

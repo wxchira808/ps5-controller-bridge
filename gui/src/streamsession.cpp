@@ -404,43 +404,50 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	player_index = 0;
 	memset(led_color, 0, sizeof(led_color));
 	packet_loss_max = connect_info.packet_loss_max;
+	audio_stream_enabled = !(connect_info.audio_video_disabled & CHIAKI_AUDIO_DISABLED);
+	video_stream_enabled = !(connect_info.audio_video_disabled & CHIAKI_VIDEO_DISABLED);
 	ChiakiErrorCode err;
+	if(video_stream_enabled)
+	{
 #if CHIAKI_LIB_ENABLE_PI_DECODER
-	if(connect_info.decoder == Decoder::Pi)
-	{
-		pi_decoder = CHIAKI_NEW(ChiakiPiDecoder);
-		if(chiaki_pi_decoder_init(pi_decoder, log.GetChiakiLog()) != CHIAKI_ERR_SUCCESS)
-			throw ChiakiException("Failed to initialize Raspberry Pi Decoder");
-	}
-	else
-	{
-#endif
-		ffmpeg_decoder = new ChiakiFfmpegDecoder;
-		ChiakiLogSniffer sniffer;
-		chiaki_log_sniffer_init(&sniffer, CHIAKI_LOG_ALL, GetChiakiLog());
-		err = chiaki_ffmpeg_decoder_init(ffmpeg_decoder,
-				chiaki_log_sniffer_get_log(&sniffer),
-				chiaki_target_is_ps5(connect_info.target) ? connect_info.video_profile.codec : CHIAKI_CODEC_H264,
-				connect_info.video_profile.max_fps,
-				connect_info.hw_decoder.isEmpty() ? NULL : connect_info.hw_decoder.toUtf8().constData(),
-				connect_info.hw_device_ctx, FfmpegFrameCb, this);
-		if(err != CHIAKI_ERR_SUCCESS)
+		if(connect_info.decoder == Decoder::Pi)
 		{
-			QString log = QString::fromUtf8(chiaki_log_sniffer_get_buffer(&sniffer));
-			chiaki_log_sniffer_fini(&sniffer);
-			throw ChiakiException("Failed to initialize FFMPEG Decoder:\n" + log);
+			pi_decoder = CHIAKI_NEW(ChiakiPiDecoder);
+			if(chiaki_pi_decoder_init(pi_decoder, log.GetChiakiLog()) != CHIAKI_ERR_SUCCESS)
+				throw ChiakiException("Failed to initialize Raspberry Pi Decoder");
 		}
-		chiaki_log_sniffer_fini(&sniffer);
-		ffmpeg_decoder->log = GetChiakiLog();
+		else
+		{
+#endif
+			ffmpeg_decoder = new ChiakiFfmpegDecoder;
+			ChiakiLogSniffer sniffer;
+			chiaki_log_sniffer_init(&sniffer, CHIAKI_LOG_ALL, GetChiakiLog());
+			err = chiaki_ffmpeg_decoder_init(ffmpeg_decoder,
+					chiaki_log_sniffer_get_log(&sniffer),
+					chiaki_target_is_ps5(connect_info.target) ? connect_info.video_profile.codec : CHIAKI_CODEC_H264,
+					connect_info.video_profile.max_fps,
+					connect_info.hw_decoder.isEmpty() ? NULL : connect_info.hw_decoder.toUtf8().constData(),
+					connect_info.hw_device_ctx, FfmpegFrameCb, this);
+			if(err != CHIAKI_ERR_SUCCESS)
+			{
+				QString log = QString::fromUtf8(chiaki_log_sniffer_get_buffer(&sniffer));
+				chiaki_log_sniffer_fini(&sniffer);
+				throw ChiakiException("Failed to initialize FFMPEG Decoder:\n" + log);
+			}
+			chiaki_log_sniffer_fini(&sniffer);
+			ffmpeg_decoder->log = GetChiakiLog();
 #if CHIAKI_LIB_ENABLE_PI_DECODER
+		}
 	}
 #endif
+	}
 	audio_volume = connect_info.audio_volume;
 	start_mic_unmuted = connect_info.start_mic_unmuted;
 	audio_out_device_name = connect_info.audio_out_device;
 	audio_in_device_name = connect_info.audio_in_device;
 
-	chiaki_opus_decoder_init(&opus_decoder, log.GetChiakiLog());
+	if(audio_stream_enabled)
+		chiaki_opus_decoder_init(&opus_decoder, log.GetChiakiLog());
 	chiaki_opus_encoder_init(&opus_encoder, log.GetChiakiLog());
 #if CHIAKI_GUI_ENABLE_SPEEX
 	speech_processing_enabled = connect_info.speech_processing_enabled;
@@ -555,10 +562,13 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	display_sink.user = this;
 	display_sink.cantdisplay_cb = CantDisplayCb;
 	chiaki_session_ctrl_set_display_sink(&session, &display_sink);
-	chiaki_opus_decoder_set_cb(&opus_decoder, AudioSettingsCb, AudioFrameCb, this);
-	ChiakiAudioSink audio_sink;
-	chiaki_opus_decoder_get_sink(&opus_decoder, &audio_sink);
-	chiaki_session_set_audio_sink(&session, &audio_sink);
+	if(audio_stream_enabled)
+	{
+		chiaki_opus_decoder_set_cb(&opus_decoder, AudioSettingsCb, AudioFrameCb, this);
+		ChiakiAudioSink audio_sink;
+		chiaki_opus_decoder_get_sink(&opus_decoder, &audio_sink);
+		chiaki_session_set_audio_sink(&session, &audio_sink);
+	}
 	ChiakiAudioHeader audio_header;
 	chiaki_audio_header_set(&audio_header, 2, 16, MICROPHONE_SAMPLES * 100, MICROPHONE_SAMPLES);
 	chiaki_opus_encoder_header(&audio_header, &opus_encoder, &session);
@@ -577,13 +587,16 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 		enable_steamdeck_haptics = false;
 #endif
 #if CHIAKI_LIB_ENABLE_PI_DECODER
-	if(pi_decoder)
-		chiaki_session_set_video_sample_cb(&session, chiaki_pi_decoder_video_sample_cb, pi_decoder);
-	else
+	if(video_stream_enabled)
 	{
+		if(pi_decoder)
+			chiaki_session_set_video_sample_cb(&session, chiaki_pi_decoder_video_sample_cb, pi_decoder);
+		else
+		{
 #endif
-		chiaki_session_set_video_sample_cb(&session, chiaki_ffmpeg_decoder_video_sample_cb, ffmpeg_decoder);
+			chiaki_session_set_video_sample_cb(&session, chiaki_ffmpeg_decoder_video_sample_cb, ffmpeg_decoder);
 #if CHIAKI_LIB_ENABLE_PI_DECODER
+		}
 	}
 #endif
 
@@ -693,7 +706,8 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 		}
 	});
 
-	StartAudioOutDrainThread();
+	if(audio_stream_enabled)
+		StartAudioOutDrainThread();
 }
 
 StreamSession::~StreamSession()
@@ -724,7 +738,8 @@ StreamSession::~StreamSession()
 	if(session_started)
 		chiaki_session_join(&session);
 	chiaki_session_fini(&session);
-	chiaki_opus_decoder_fini(&opus_decoder);
+	if(audio_stream_enabled)
+		chiaki_opus_decoder_fini(&opus_decoder);
 	chiaki_opus_encoder_fini(&opus_encoder);
 #if CHIAKI_GUI_ENABLE_SPEEX
 	if(speech_processing_enabled)
