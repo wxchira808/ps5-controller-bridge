@@ -704,7 +704,12 @@ static const QMap<RenderBackend, QString> render_backend_values = {
 	{ RenderBackend::OpenGL, "opengl" },
 };
 
-#if defined(Q_OS_MACOS) && QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+#if defined(Q_OS_WIN)
+// This fork is primarily used as a controller bridge. Prefer startup
+// stability over Vulkan throughput on Windows, where overlay injectors can
+// crash the libplacebo/Vulkan path before the fallback handler can recover.
+static const RenderBackend render_backend_default = RenderBackend::OpenGL;
+#elif defined(Q_OS_MACOS) && QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
 // Default to OpenGL on macOS with Qt >= 6.10 due to MoltenVK bug
 static const RenderBackend render_backend_default = RenderBackend::OpenGL;
 #else
@@ -715,6 +720,13 @@ RenderBackend Settings::GetRenderBackend() const
 {
 	auto v = settings.value("settings/render_backend", render_backend_values[render_backend_default]).toString();
 	auto backend = render_backend_values.key(v, render_backend_default);
+
+#if defined(Q_OS_WIN)
+	if (backend == RenderBackend::Vulkan && !qEnvironmentVariableIsSet("CHIAKI_ALLOW_VULKAN_ON_WINDOWS")) {
+		qWarning() << "Forcing OpenGL backend on Windows for ps5-controller-bridge startup stability";
+		return RenderBackend::OpenGL;
+	}
+#endif
 
 #if defined(Q_OS_MACOS) && QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
 	// Force OpenGL on macOS with Qt >= 6.10 because MoltenVK backend crashes when it creates a QContainerLayer.
