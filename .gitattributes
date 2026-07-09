@@ -1,2 +1,5 @@
 /test/*.inl linguist-generated=true
 /lib/*.h linguist-language=C
+*.sh text eol=lf
+.github/workflows/*.yml text eol=lf
+.github/workflows/*.yaml text eol=lf

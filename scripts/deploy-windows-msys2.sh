@@ -91,14 +91,31 @@ while [[ ${#queue[@]} -gt 0 ]]; do
     done < <(extract_dependencies "$current")
 done
 
-# Ensure SDL3 is bundled even if ldd/Qt doesn't list it.
+# Stage runtime DLLs that are loaded indirectly or discovered unreliably by ldd
+# in GitHub's MSYS2 environment. Missing FFmpeg/libplacebo DLLs produce a
+# package that builds successfully but exits immediately on launch.
 shopt -s nullglob
-for dll_dir in "$msys_prefix/bin" "/clangarm64/bin" "$msys_prefix/mingw64/bin"; do
-    for sdl3 in "$dll_dir"/SDL3*.dll; do
-        if [[ -f "$sdl3" ]]; then
-            echo "Staging SDL3 runtime $sdl3"
-            cp "$sdl3" "$output_dir/"
-        fi
+runtime_patterns=(
+    "SDL2*.dll"
+    "SDL3*.dll"
+    "avcodec-*.dll"
+    "avformat-*.dll"
+    "avutil-*.dll"
+    "swresample-*.dll"
+    "swscale-*.dll"
+    "libplacebo-*.dll"
+    "shaderc_shared.dll"
+    "spirv-cross-c-shared.dll"
+)
+for dll_dir in "$msys_prefix/bin" "$msys_prefix/mingw64/bin" "/mingw64/bin" "/clangarm64/bin"; do
+    [[ -d "$dll_dir" ]] || continue
+    for pattern in "${runtime_patterns[@]}"; do
+        for dll in "$dll_dir"/$pattern; do
+            if [[ -f "$dll" ]]; then
+                echo "Staging runtime $dll"
+                cp "$dll" "$output_dir/"
+            fi
+        done
     done
 done
 shopt -u nullglob
@@ -112,3 +129,25 @@ windeployqt6.exe --no-translations --qmldir="$qml_dir" "$output_dir/$(basename "
     shopt -s nocaseglob
     rm -f "$output_dir"/d3dcompiler*.dll
 )
+
+required_dlls=(
+    "SDL2.dll"
+    "SDL3.dll"
+    "avcodec-*.dll"
+    "avformat-*.dll"
+    "avutil-*.dll"
+    "swresample-*.dll"
+    "libplacebo-*.dll"
+)
+missing_dlls=()
+for required in "${required_dlls[@]}"; do
+    matches=("$output_dir"/$required)
+    if [[ ! -e "${matches[0]}" ]]; then
+        missing_dlls+=("$required")
+    fi
+done
+
+if [[ ${#missing_dlls[@]} -gt 0 ]]; then
+    printf 'missing runtime DLL(s): %s\n' "${missing_dlls[*]}" >&2
+    exit 1
+fi

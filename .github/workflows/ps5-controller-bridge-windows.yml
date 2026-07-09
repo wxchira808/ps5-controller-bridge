@@ -100,6 +100,14 @@ jobs:
         run: |
           ./scripts/deploy-windows-msys2.sh ps5-controller-bridge-Win build/gui/chiaki.exe "${{ github.workspace }}/build/third-party/cpp-steam-tools" /mingw64 gui/src/qml
 
+      - name: Validate portable package contents
+        run: |
+          test -f ps5-controller-bridge-Win/chiaki.exe
+          test -n "$(find ps5-controller-bridge-Win -maxdepth 1 -iname 'avformat-*.dll' -print -quit)"
+          test -n "$(find ps5-controller-bridge-Win -maxdepth 1 -iname 'libplacebo-*.dll' -print -quit)"
+          test -f ps5-controller-bridge-Win/SDL2.dll
+          test -f ps5-controller-bridge-Win/SDL3.dll
+
       - name: Package ps5-controller-bridge
         run: |
           CHIAKI_VERSION_MAJOR="$(grep 'CHIAKI_VERSION_MAJOR' CMakeLists.txt | grep -Eo '[0-9]+')"
