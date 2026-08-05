@@ -75,10 +75,13 @@ typedef enum {
 } ChiakiTakionEventType;
 
 typedef enum {
-	CHIAKI_NONE_DISABLED = 0,  //(bits: 00)
-	CHIAKI_AUDIO_DISABLED = 1, //(bits: 01)
-	CHIAKI_VIDEO_DISABLED = 2, //(bits: 10)
-	CHIAKI_AUDIO_VIDEO_DISABLED = 3 //(bits: 11)
+	CHIAKI_NONE_DISABLED = 0,
+	CHIAKI_AUDIO_DISABLED = 1,
+	CHIAKI_VIDEO_DISABLED = 2,
+	CHIAKI_AUDIO_VIDEO_DISABLED = 3,
+	CHIAKI_HAPTICS_DISABLED = 4,
+	CHIAKI_MICROPHONE_DISABLED = 8,
+	CHIAKI_ALL_MEDIA_DISABLED = 15
 } ChiakiDisableAudioVideo;
 
 typedef struct chiaki_takion_event_t

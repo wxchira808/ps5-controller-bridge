@@ -406,6 +406,15 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	packet_loss_max = connect_info.packet_loss_max;
 	audio_stream_enabled = !(connect_info.audio_video_disabled & CHIAKI_AUDIO_DISABLED);
 	video_stream_enabled = !(connect_info.audio_video_disabled & CHIAKI_VIDEO_DISABLED);
+	microphone_stream_enabled = true;
+	haptics_stream_enabled = true;
+#ifdef CHIAKI_CONTROLLER_ONLY_BRIDGE
+	audio_stream_enabled = false;
+	video_stream_enabled = false;
+	microphone_stream_enabled = false;
+	haptics_stream_enabled = false;
+	CHIAKI_LOGI(GetChiakiLog(), "Controller-only bridge mode: all media processing disabled");
+#endif
 	ChiakiErrorCode err;
 	if(video_stream_enabled)
 	{
@@ -448,9 +457,10 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 
 	if(audio_stream_enabled)
 		chiaki_opus_decoder_init(&opus_decoder, log.GetChiakiLog());
-	chiaki_opus_encoder_init(&opus_encoder, log.GetChiakiLog());
+	if(microphone_stream_enabled)
+		chiaki_opus_encoder_init(&opus_encoder, log.GetChiakiLog());
 #if CHIAKI_GUI_ENABLE_SPEEX
-	speech_processing_enabled = connect_info.speech_processing_enabled;
+	speech_processing_enabled = microphone_stream_enabled && connect_info.speech_processing_enabled;
 	if(speech_processing_enabled)
 	{
 		echo_state = speex_echo_state_init(MICROPHONE_SAMPLES, MICROPHONE_SAMPLES * 10);
@@ -484,6 +494,9 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	chiaki_connect_info.packet_loss_max = connect_info.packet_loss_max;
 	chiaki_connect_info.auto_regist = connect_info.auto_regist;
 	chiaki_connect_info.audio_video_disabled = connect_info.audio_video_disabled;
+#ifdef CHIAKI_CONTROLLER_ONLY_BRIDGE
+	chiaki_connect_info.audio_video_disabled = CHIAKI_ALL_MEDIA_DISABLED;
+#endif
 
 	dpad_touch_shortcut1 = connect_info.dpad_touch_shortcut1;
 	dpad_touch_shortcut2 = connect_info.dpad_touch_shortcut2;
@@ -569,11 +582,14 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 		chiaki_opus_decoder_get_sink(&opus_decoder, &audio_sink);
 		chiaki_session_set_audio_sink(&session, &audio_sink);
 	}
-	ChiakiAudioHeader audio_header;
-	chiaki_audio_header_set(&audio_header, 2, 16, MICROPHONE_SAMPLES * 100, MICROPHONE_SAMPLES);
-	chiaki_opus_encoder_header(&audio_header, &opus_encoder, &session);
+	if(microphone_stream_enabled)
+	{
+		ChiakiAudioHeader audio_header;
+		chiaki_audio_header_set(&audio_header, 2, 16, MICROPHONE_SAMPLES * 100, MICROPHONE_SAMPLES);
+		chiaki_opus_encoder_header(&audio_header, &opus_encoder, &session);
+	}
 
-	if (connect_info.enable_dualsense)
+	if (haptics_stream_enabled && connect_info.enable_dualsense)
 	{
 		ChiakiAudioSink haptics_sink;
 		haptics_sink.user = this;
@@ -664,7 +680,7 @@ StreamSession::StreamSession(const StreamSessionConnectInfo &connect_info, QObje
 	}
 #endif
 	key_map = connect_info.key_map;
-	if (connect_info.enable_dualsense)
+	if (haptics_stream_enabled && connect_info.enable_dualsense)
 	{
 		InitHaptics();
 #if CHIAKI_GUI_ENABLE_STEAMDECK_NATIVE
@@ -740,7 +756,8 @@ StreamSession::~StreamSession()
 	chiaki_session_fini(&session);
 	if(audio_stream_enabled)
 		chiaki_opus_decoder_fini(&opus_decoder);
-	chiaki_opus_encoder_fini(&opus_encoder);
+	if(microphone_stream_enabled)
+		chiaki_opus_encoder_fini(&opus_encoder);
 #if CHIAKI_GUI_ENABLE_SPEEX
 	if(speech_processing_enabled)
 	{

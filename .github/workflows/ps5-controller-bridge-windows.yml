@@ -90,7 +90,7 @@ jobs:
 
       - name: Configure ps5-controller-bridge
         run: |
-          cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCHIAKI_ENABLE_CLI=OFF
+          cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCHIAKI_ENABLE_CLI=OFF -DCHIAKI_CONTROLLER_ONLY_BRIDGE=ON
 
       - name: Build ps5-controller-bridge
         run: |

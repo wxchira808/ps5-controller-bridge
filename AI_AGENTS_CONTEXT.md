@@ -31,13 +31,26 @@ Initial optimization work has already been applied in this copy:
 - when video is disabled, the GUI/session path skips video decoder setup
 - when audio is disabled, the GUI/session path skips downstream audio decoder and sink setup
 - the stream connection skips regular audio/video receiver allocation when those streams are disabled
-- the haptics receiver path is kept so controller rumble can still work
+- normal builds keep the haptics receiver path when haptics audio is enabled
+
+The dedicated Windows bridge workflow additionally builds with
+`CHIAKI_CONTROLLER_ONLY_BRIDGE=ON`. In that build:
+
+- audio, video, microphone, and haptics-audio media paths are forced off
+- regular rumble, adaptive-trigger control messages, and controller state remain available
+- discarded media packets are dropped at Takion packet ingress
+- SDL controller events are polled with a precise 1 ms timer instead of 4 ms
+- the controller feedback sender uses elevated, non-realtime Windows thread priority
 
 Relevant files:
 
 - `gui/include/streamsession.h`
 - `gui/src/streamsession.cpp`
 - `lib/src/streamconnection.c`
+- `lib/src/takion.c`
+- `lib/src/feedbacksender.c`
+- `gui/src/controllermanager.cpp`
+- `.github/workflows/ps5-controller-bridge-windows.yml`
 - `CONTROLLER_ONLY_NOTES.md`
 
 ## Important intent
@@ -54,11 +67,10 @@ For this user, the priority order is:
 
 ## Good next steps
 
-- build and test this custom copy with `Audio and Video Disabled`
+- build and test the dedicated Windows controller-bridge artifact
 - confirm controller input still works correctly
-- confirm haptics behavior still works as expected
+- confirm keyboard/mouse touchpad mappings still work correctly
 - measure whether CPU usage or jitter is improved
-- consider a dedicated controller-only launch mode later
 - consider hidden/minimized auto-connect behavior later
 
 ## Constraints
@@ -66,4 +78,3 @@ For this user, the priority order is:
 - Keep the user's original packaged install separate and untouched.
 - Prefer isolated changes that improve controller-only use without breaking standard local streaming.
 - Avoid invasive refactors unless they are necessary for measurable latency or stability gains.
-

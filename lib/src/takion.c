@@ -1638,6 +1638,13 @@ static void takion_handle_packet_av(ChiakiTakion *takion, uint8_t base_type, uin
 		free(buf);
 		return;
 	}
+	if((takion->disable_audio_video & CHIAKI_AUDIO_DISABLED)
+			&& (takion->disable_audio_video & CHIAKI_HAPTICS_DISABLED)
+			&& (base_type == TAKION_PACKET_TYPE_AUDIO))
+	{
+		free(buf);
+		return;
+	}
 	ChiakiTakionAVPacket packet;
 	ChiakiErrorCode err = takion->av_packet_parse(&packet, &takion->key_state, buf, buf_size);
 	if(err != CHIAKI_ERR_SUCCESS)

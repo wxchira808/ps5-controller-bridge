@@ -238,7 +238,14 @@ class Settings : public QObject
 
 		QMap<QString, QString> GetPlaceboValues();
 
-		ChiakiDisableAudioVideo GetAudioVideoDisabled() const       { return static_cast<ChiakiDisableAudioVideo>(settings.value("settings/audio_video_disabled", 0).toInt()); }
+		ChiakiDisableAudioVideo GetAudioVideoDisabled() const
+		{
+#ifdef CHIAKI_CONTROLLER_ONLY_BRIDGE
+			return CHIAKI_AUDIO_VIDEO_DISABLED;
+#else
+			return static_cast<ChiakiDisableAudioVideo>(settings.value("settings/audio_video_disabled", 0).toInt());
+#endif
+		}
 		void SetAudioVideoDisabled(ChiakiDisableAudioVideo disabled) { settings.setValue("settings/audio_video_disabled", disabled); }
 
 		bool GetDiscoveryEnabled() const		{ return settings.value("settings/auto_discovery", true).toBool(); }

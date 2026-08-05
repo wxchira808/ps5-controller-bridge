@@ -173,6 +173,8 @@ class StreamSession : public QObject
 		int port_guess_socket_count;
 		bool audio_stream_enabled = true;
 		bool video_stream_enabled = true;
+		bool microphone_stream_enabled = true;
+		bool haptics_stream_enabled = true;
 #ifdef Q_OS_MACOS
 		bool mic_authorization;
 #endif

@@ -181,6 +181,7 @@ CHIAKI_EXPORT ChiakiErrorCode chiaki_stream_connection_run(ChiakiStreamConnectio
 
 	bool audio_disabled = session->connect_info.disable_audio_video & CHIAKI_AUDIO_DISABLED;
 	bool video_disabled = session->connect_info.disable_audio_video & CHIAKI_VIDEO_DISABLED;
+	bool haptics_disabled = session->connect_info.disable_audio_video & CHIAKI_HAPTICS_DISABLED;
 
 	if(!audio_disabled)
 	{
@@ -195,13 +196,16 @@ CHIAKI_EXPORT ChiakiErrorCode chiaki_stream_connection_run(ChiakiStreamConnectio
 		}
 	}
 
-	stream_connection->haptics_receiver = chiaki_audio_receiver_new(session, NULL);
-	if(!stream_connection->haptics_receiver)
+	if(!haptics_disabled)
 	{
-		CHIAKI_LOGE(session->log, "StreamConnection failed to initialize Haptics Receiver");
-		err = CHIAKI_ERR_UNKNOWN;
-		chiaki_mutex_unlock(&stream_connection->state_mutex);
-		goto err_audio_receiver;
+		stream_connection->haptics_receiver = chiaki_audio_receiver_new(session, NULL);
+		if(!stream_connection->haptics_receiver)
+		{
+			CHIAKI_LOGE(session->log, "StreamConnection failed to initialize Haptics Receiver");
+			err = CHIAKI_ERR_UNKNOWN;
+			chiaki_mutex_unlock(&stream_connection->state_mutex);
+			goto err_audio_receiver;
+		}
 	}
 
 	if(!video_disabled)
@@ -981,11 +985,14 @@ static void stream_connection_takion_data_expect_streaminfo(ChiakiStreamConnecti
 		goto error;
 	}
 
-	err = stream_connection_enable_microphone(stream_connection);
-	if(err != CHIAKI_ERR_SUCCESS)
+	if(!(stream_connection->session->connect_info.disable_audio_video & CHIAKI_MICROPHONE_DISABLED))
 	{
-		CHIAKI_LOGE(stream_connection->log, "StreamConnection failed to enable microphone input");
-		goto error;
+		err = stream_connection_enable_microphone(stream_connection);
+		if(err != CHIAKI_ERR_SUCCESS)
+		{
+			CHIAKI_LOGE(stream_connection->log, "StreamConnection failed to enable microphone input");
+			goto error;
+		}
 	}
 
 	// stream_connection->state_mutex is expected to be locked by the caller of this function
@@ -1255,7 +1262,10 @@ static void stream_connection_takion_av(ChiakiStreamConnection *stream_connectio
 			chiaki_video_receiver_av_packet(stream_connection->video_receiver, packet);
 	}
 	else if(packet->is_haptics)
-	    chiaki_audio_receiver_av_packet(stream_connection->haptics_receiver, packet);
+	{
+		if(stream_connection->haptics_receiver)
+			chiaki_audio_receiver_av_packet(stream_connection->haptics_receiver, packet);
+	}
 	else if(stream_connection->audio_receiver)
 		chiaki_audio_receiver_av_packet(stream_connection->audio_receiver, packet);
 }

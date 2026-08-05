@@ -8,7 +8,15 @@ What this custom checkout changes
 - Skips video decoder setup when video is disabled.
 - Skips downstream audio decoder and sink setup when audio is disabled.
 - Skips regular audio/video receiver allocation in the stream connection when those streams are disabled.
-- Keeps haptics receiver setup intact so controller rumble support still has a path.
+- Normal builds keep haptics receiver setup intact when haptics audio is enabled.
+
+Dedicated Windows bridge mode
+
+- The GitHub Actions Windows build enables `CHIAKI_CONTROLLER_ONLY_BRIDGE`.
+- It forces audio, video, microphone, and haptics-audio off even if an older saved setting says otherwise.
+- It keeps controller input, keyboard/mouse controller mapping, touchpad mapping, normal rumble messages, adaptive-trigger messages, and session heartbeats.
+- It drops unwanted media packets before AV parsing or decryption and does not allocate their receivers or codecs.
+- It polls SDL controller events every 1 ms with a precise timer and raises the Windows feedback-sender thread to high, non-realtime priority.
 
 Why this is useful
 
@@ -23,11 +31,11 @@ Files changed
 
 What is not done yet
 
-- There is no dedicated `controller-only` UI toggle yet.
+- There is no runtime `controller-only` UI toggle; the dedicated Windows artifact is controller-only at build time.
 - The app still opens the normal stream window.
-- This pass has not been compiled or runtime-tested in this environment.
+- Runtime behavior still needs to be tested against a PS5 after the Windows artifact builds.
 
 Best next step
 
-- Build this checkout and verify that a session with `Audio and Video Disabled` still connects cleanly, still sends controller input, and still keeps haptics working where expected.
+- Build this checkout and verify that the dedicated bridge artifact connects cleanly and still sends controller and keyboard/mouse-mapped input.
 - If that goes well, the next improvement would be a true hidden/minimized auto-connect launch path so the app behaves more like a background controller bridge.

@@ -128,7 +128,11 @@ static QSet<QPair<uint16_t, uint16_t>> chiaki_steam_virtual_controller_ids({
 
 static ControllerManager *instance = nullptr;
 
+#ifdef CHIAKI_CONTROLLER_ONLY_BRIDGE
+#define UPDATE_INTERVAL_MS 1
+#else
 #define UPDATE_INTERVAL_MS 4
+#endif
 #define MOVE_CHECK_MS 1000
 
 ControllerManager *ControllerManager::GetInstance()
@@ -154,6 +158,7 @@ ControllerManager::ControllerManager(QObject *parent)
 		return;
 
 	auto timer = new QTimer(this);
+	timer->setTimerType(Qt::PreciseTimer);
 	connect(timer, &QTimer::timeout, this, &ControllerManager::HandleEvents);
 	timer->start(UPDATE_INTERVAL_MS);
 	auto move_timer = new QTimer(this);
